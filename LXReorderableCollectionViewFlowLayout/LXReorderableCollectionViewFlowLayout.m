@@ -50,7 +50,6 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
 @implementation UICollectionViewCell (LXReorderableCollectionViewFlowLayout)
 
 - (UIView *)LX_snapshotView {
-    
     if ([self respondsToSelector:@selector(snapshotViewAfterScreenUpdates:)]) {
         return [self snapshotViewAfterScreenUpdates:NO];
     } else {
@@ -251,7 +250,7 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
                 distance = -contentOffset.x - contentInset.left;
             }
             
-            translation = CGPointMake(0.0f, 0.0f);
+            translation = CGPointMake(distance, 0.0f);
         } break;
         case LXScrollingDirectionRight: {
             CGFloat maxX = MAX(contentSize.width, frameSize.width) - frameSize.width + contentInset.right;
@@ -260,7 +259,7 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
                 distance = maxX - contentOffset.x;
             }
             
-            translation = CGPointMake(0.0f, 0.0f);
+            translation = CGPointMake(distance, 0.0f);
         } break;
         default: {
             // Do nothing...
@@ -293,18 +292,30 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
             
             self.currentView = [[UIView alloc] initWithFrame:collectionViewCell.frame];
             
-            collectionViewCell.highlighted = YES;
-            UIView *highlightedImageView = [collectionViewCell LX_snapshotView];
-            highlightedImageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            highlightedImageView.alpha = 1.0f;
+            BOOL cellHighlightedWhenPickedUp = collectionViewCell.highlighted;
+            UIView *highlightedImageView;
+            UIView *imageView;
             
             collectionViewCell.highlighted = NO;
-            UIView *imageView = [collectionViewCell LX_snapshotView];
+            imageView = [collectionViewCell LX_snapshotView];
             imageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-            imageView.alpha = 1.0f;
-            
             [self.currentView addSubview:imageView];
-            [self.currentView addSubview:highlightedImageView];
+            
+            // Match snapshot state to state of cell when it was lifted
+            if ( cellHighlightedWhenPickedUp ) {
+                collectionViewCell.highlighted = YES;
+                highlightedImageView = [collectionViewCell LX_snapshotView];
+                highlightedImageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+                [self.currentView addSubview:highlightedImageView];
+                
+                highlightedImageView.alpha = 1.0f;
+                imageView.alpha = 0.0f;
+            }
+            else {
+                highlightedImageView.alpha = 0.0f;
+                imageView.alpha = 1.0f;
+            }
+            
             [self.collectionView addSubview:self.currentView];
             
             self.currentViewCenter = self.currentView.center;
@@ -360,15 +371,16 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
                  delay:0.0
                  options:UIViewAnimationOptionBeginFromCurrentState
                  animations:^{
-                     
                      __strong typeof(self) strongSelf = weakSelf;
-                     if ( strongSelf.reorderCompletionAnimationBlock != nil ) {
-                         strongSelf.reorderCompletionAnimationBlock( strongSelf.currentView );
-                         strongSelf.currentView.center = layoutAttributes.center;
-                     }
-                     else {
-                         strongSelf.currentView.transform = CGAffineTransformMakeScale(1.0f, 1.0f);
-                         strongSelf.currentView.center = layoutAttributes.center;
+                     if (strongSelf) {
+                         if ( strongSelf.reorderCompletionAnimationBlock ) {
+                             strongSelf.reorderCompletionAnimationBlock( strongSelf.currentView );
+                             strongSelf.currentView.center = layoutAttributes.center;
+                         }
+                         else {
+                             strongSelf.currentView.transform = CGAffineTransformMakeScale(1.0f, 1.0f);
+                             strongSelf.currentView.center = layoutAttributes.center;
+                         }
                      }
                  }
                  completion:^(BOOL finished) {
@@ -394,7 +406,22 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
     switch (gestureRecognizer.state) {
         case UIGestureRecognizerStateBegan:
         case UIGestureRecognizerStateChanged: {
-            self.panTranslationInCollectionView = CGPointMake(0.0f, [gestureRecognizer translationInView:self.collectionView].y);
+            if ( self.limitViewMovementToScrollDirection ) {
+                switch ( self.scrollDirection ) {
+                    case UICollectionViewScrollDirectionVertical:
+                        self.panTranslationInCollectionView = CGPointMake(0.0f, [gestureRecognizer translationInView:self.collectionView].y);
+                        break;
+                    case UICollectionViewScrollDirectionHorizontal:
+                        self.panTranslationInCollectionView = CGPointMake([gestureRecognizer translationInView:self.collectionView].x, 0.0f);
+                        break;
+                    default:
+                        [NSException raise:@"Unhandled Scroll Direction" format:@"Scroll direction, %ld, not anticipated in [%@ %@]. Pan gesture movement will not be handled.", (long)self.scrollDirection, NSStringFromClass(self.class), NSStringFromSelector(_cmd)];
+                        break;
+                }
+            }
+            else {
+                self.panTranslationInCollectionView = [gestureRecognizer translationInView:self.collectionView];
+            }
             
             CGPoint viewCenter = self.currentView.center = LXS_CGPointAdd(self.currentViewCenter, self.panTranslationInCollectionView);
             
@@ -484,7 +511,7 @@ static NSString * const kLXCollectionViewKeyPath = @"collectionView";
     }
     
     if ([self.panGestureRecognizer isEqual:gestureRecognizer]) {
-        return [self.longPressGestureRecognizer isEqual:otherGestureRecognizer] || [otherGestureRecognizer.view isKindOfClass:self.gestureRecognizerIgnoreViewClass];;
+        return [self.longPressGestureRecognizer isEqual:otherGestureRecognizer] || [otherGestureRecognizer.view isKindOfClass:self.gestureRecognizerIgnoreViewClass];
     }
     
     return NO;

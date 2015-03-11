@@ -19,6 +19,7 @@
 @property (copy, nonatomic) void (^reorderStartAnimationBlock) (UIView *currentView);
 @property (copy, nonatomic) void (^reorderCompletionAnimationBlock) (UIView *currentView);
 @property (assign, nonatomic) Class gestureRecognizerIgnoreViewClass;
+@property (assign, nonatomic) BOOL limitViewMovementToScrollDirection; // Defaults to NO
 
 @property (assign, nonatomic, readonly) id<LXReorderableCollectionViewDataSource> dataSource;
 
